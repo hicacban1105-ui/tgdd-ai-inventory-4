@@ -64,7 +64,8 @@ except Exception as e:
 # ==========================================
 # GIAO DIỆN CHÍNH
 # ==========================================
-st.sidebar.image("/content/Logo-The-Gioi-Di-Dong-MWG.webp", width=50)
+# SỬA LỖI 1: Thay đường dẫn ảnh local của Colab bằng link online an toàn để Web Cloud đọc được
+st.sidebar.image("https://upload.wikimedia.org/wikipedia/commons/thumb/c/cd/Thegioididong_logo.svg/512px-Thegioididong_logo.svg.png", use_container_width=True)
 st.sidebar.markdown("### ⚙️ BỘ LỌC DỮ LIỆU")
 
 store_list = df['store_id'].unique().tolist()
@@ -106,6 +107,13 @@ with tab1:
     ax.legend()
     ax.grid(True, linestyle=':', alpha=0.6)
     st.pyplot(fig)
+    
+    st.subheader("Bảng dữ liệu chi tiết")
+    # Lọc gọn các cột cần thiết để bảng Tab 1 không bị tràn quá nhiều thông số kỹ thuật AI
+    df_display = filtered_df[['date', 'store_id', 'sku_id', 'sales_qty', 'AI_Daily_Forecast']].copy()
+    df_display['sales_qty'] = df_display['sales_qty'].astype(int)
+    df_display['AI_Daily_Forecast'] = df_display['AI_Daily_Forecast'].astype(int)
+    st.dataframe(df_display, use_container_width=True)
 
 with tab2:
     st.subheader("Danh sách SKU Rủi ro Cháy Hàng")
@@ -124,41 +132,14 @@ with tab3:
         'lead_time_days': 'mean'
     }).reset_index()
 
-    suggest_df['forecast_demand'] = np.ceil(suggest_df['AI_Daily_Forecast'] * suggest_df['lead_time_days'])
-    suggest_df['Safety_Stock'] = np.ceil(suggest_df['forecast_demand'] * 0.5)
-    suggest_df['Reorder_Qty'] = np.maximum(0, suggest_df['forecast_demand'] + suggest_df['Safety_Stock'] - suggest_df['current_stock'])
+    # SỬA LỖI 2: Thêm .astype(int) cho cả 3 cột tính toán để bảng báo cáo sạch sẽ 100%
+    suggest_df['forecast_demand'] = np.ceil(suggest_df['AI_Daily_Forecast'] * suggest_df['lead_time_days']).astype(int)
+    suggest_df['Safety_Stock'] = np.ceil(suggest_df['forecast_demand'] * 0.5).astype(int)
+    suggest_df['Reorder_Qty'] = np.maximum(0, suggest_df['forecast_demand'] + suggest_df['Safety_Stock'] - suggest_df['current_stock']).astype(int)
+    
     action_df = suggest_df[suggest_df['Reorder_Qty'] > 0].sort_values(by='Reorder_Qty', ascending=False)
 
     if action_df.empty:
         st.success("Tất cả hàng hóa đang ở mức an toàn.")
     else:
         st.dataframe(action_df[['store_id', 'sku_id', 'forecast_demand', 'Safety_Stock', 'current_stock', 'Reorder_Qty']].style.highlight_max(subset=['Reorder_Qty'], color='lightcoral'), use_container_width=True)
-        # Đọc nội dung file app.py hiện tại để sửa triệt để Tab 3
-with open("app.py", "r", encoding="utf-8") as f:
-    code = f.read()
-
-# Đoạn xử lý hiển thị Tab 3 cũ
-old_tab3_code = """    suggest_df['forecast_demand'] = np.ceil(suggest_df['AI_Daily_Forecast'] * suggest_df['lead_time_days'])
-    suggest_df['Safety_Stock'] = np.ceil(suggest_df['forecast_demand'] * 0.5)
-    suggest_df['Reorder_Qty'] = np.maximum(0, suggest_df['forecast_demand'] + suggest_df['Safety_Stock'] - suggest_df['current_stock'])
-    action_df = suggest_df[suggest_df['Reorder_Qty'] > 0].sort_values(by='Reorder_Qty', ascending=False)"""
-
-# Đoạn xử lý mới ép toàn bộ các cột tính toán về số nguyên integer
-new_tab3_code = """    suggest_df['forecast_demand'] = np.ceil(suggest_df['AI_Daily_Forecast'] * suggest_df['lead_time_days']).astype(int)
-    suggest_df['Safety_Stock'] = np.ceil(suggest_df['forecast_demand'] * 0.5).astype(int)
-    suggest_df['Reorder_Qty'] = np.maximum(0, suggest_df['forecast_demand'] + suggest_df['Safety_Stock'] - suggest_df['current_stock']).astype(int)
-    action_df = suggest_df[suggest_df['Reorder_Qty'] > 0].sort_values(by='Reorder_Qty', ascending=False)"""
-
-if old_tab3_code in code:
-    code = code.replace(old_tab3_code, new_tab3_code)
-else:
-    # Đoạn phòng hờ nếu cấu trúc chữ viết hơi khác bản cũ của bạn
-    code = code.replace("st.dataframe(action_df", """action_df['forecast_demand'] = action_df['forecast_demand'].round(0).astype(int)
-        action_df['Safety_Stock'] = action_df['Safety_Stock'].round(0).astype(int)
-        action_df['Reorder_Qty'] = action_df['Reorder_Qty'].round(0).astype(int)
-        st.dataframe(action_df""")
-
-with open("app.py", "w", encoding="utf-8") as f:
-    f.write(code)
-
-print("✅ Đã ép kiểu số nguyên thành công cho toàn bộ bảng Khuyến nghị nhập hàng!")
